@@ -1,0 +1,150 @@
+version: '3.8'
+
+networks:
+  game-network:
+    name: game-network
+    driver: bridge
+
+services:
+  # ==========================================
+  # ИНФРАСТРУКТУРА: Базы Данных
+  # ==========================================
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: postgres-db
+    networks:
+      - game-network
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: game
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    networks:
+      - game-network
+    ports:
+      - "27017:27017"
+    command: mongod --wiredTigerCacheSizeGB 0.15
+    deploy:
+      resources:
+        limits:
+          memory: 350m
+
+  # ==========================================
+  # СЕРДЦЕ СИСТЕМЫ: Eureka Registry
+  # ==========================================
+  eureka-server:
+    image: eureka-microservice:latest
+    container_name: eureka-server
+    networks:
+      - game-network
+    ports:
+      - "1111:1111"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command: java -Xmx192m -XX:+UseZGC -jar app.jar
+
+  # ==========================================
+  # МАРШРУТИЗАТОР: API Gateway
+  # ==========================================
+  gateway-service:
+    image: gateway-service:latest
+    container_name: gateway-service
+    networks:
+      - game-network
+    ports:
+      - "5555:5555"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:1111/eureka/
+    depends_on:
+      - eureka-server
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    command: java -Xmx192m -XX:+UseZGC -jar app.jar
+
+  # ==========================================
+  # БИЗНЕС-ЛОГИКА: Микросервисы
+  # ==========================================
+  users-service:
+    image: users-service:latest
+    container_name: users-service
+    networks:
+      - game-network
+    ports:
+      - "4444:4444"
+      - "6567:6567"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:1111/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/game
+    depends_on:
+      - postgres-db
+      - eureka-server
+    deploy:
+      resources:
+        limits:
+          memory: 400m
+    command: java -Xmx256m -Xss256k -XX:MaxMetaspaceSize=96m -XX:+UseZGC -Djdk.tracePinnedThreads=short -jar app.jar --spring.config.name=users-server
+
+  mongo-service:
+    image: mongo-service:latest
+    container_name: mongo-service
+    networks:
+      - game-network
+    ports:
+      - "3333:3333"
+      - "6565:6565"
+    depends_on:
+      - mongodb
+      - eureka-server
+    deploy:
+      resources:
+        limits:
+          memory: 350m
+    command: java -Xmx256m -XX:+UseZGC -Djdk.tracePinnedThreads=short -jar app.jar --spring.config.name=mongo-server-docker
+
+  game-service:
+    image: game-service:latest
+    container_name: game-service
+    networks:
+      - game-network
+    ports:
+      - "6566:6566"
+      - "2223:2222"
+    depends_on:
+      - eureka-server
+    deploy:
+      resources:
+        limits:
+          memory: 350m
+    command: java -Xmx256m -XX:+UseZGC -jar app.jar
+
+  # ==========================================
+  # ИГРОВОЙ ДВИЖОК: Тетрис
+  # ==========================================
+  raging-horse-tetris:
+    image: raging-horse-tetris:latest
+    container_name: raging-horse-tetris
+    networks:
+      - game-network
+    ports:
+      - "5701:5701"
+      - "8080:8080"
+    depends_on:
+      - eureka-server
+    deploy:
+      resources:
+        limits:
+          memory: 350m
+    command: java -XX:+UseContainerSupport -XX:+UseZGC -jar app.jar
