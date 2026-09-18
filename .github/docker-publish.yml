@@ -1,0 +1,53 @@
+name: CI/CD Docker Hub Publish
+
+on:
+  push:
+    branches: [ "main" ] # Срабатывает при пуше в главную ветку
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [
+          { name: 'eureka-microservice', dir: 'EUREKA-microservice' },
+          { name: 'gateway-service', dir: 'Gateway-microservice' },
+          { name: 'users-service', dir: 'users-service' },
+          { name: 'mongo-service', dir: 'mongo-service' },
+          { name: 'game-service', dir: 'game-service' }
+        ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Check for changes in service directory
+      id: changed-files
+      uses: tj-actions/changed-files@v44
+      with:
+        files: ${{ matrix.service.dir }}/**
+
+    - name: Set up JDK 21
+      if: steps-changed-files.outputs.any_changed == 'true'
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: 'maven'
+
+    - name: Log in to Docker Hub
+      if: steps-changed-files.outputs.any_changed == 'true'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and push Docker image
+      if: steps-changed-files.outputs.any_changed == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./${{ matrix.service.dir }}
+        push: true
+        tags: |
+          ${{ matrix.service.name == 'tetris-game' && 'tarassov12346/raging-horse-tetris:latest' || format('tarassov12346/{0}:latest', matrix.service.name) }}
