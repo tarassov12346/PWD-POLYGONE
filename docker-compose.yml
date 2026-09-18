@@ -1,152 +1,95 @@
-networks:
-  game-network:
-    name: game-network
-    driver: bridge
+version: '3.8'
 
 services:
-  # ==========================================
-  # ИНФРАСТРУКТУРА: Базы Данных (официальные образы)
-  # ==========================================
-  postgres-db:
-    image: postgres:15-alpine
-    container_name: postgres-db
-    networks:
-      - game-network
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: game
-    deploy:
-      resources:
-        limits:
-          memory: 256m
-
-  mongodb:
-    image: mongo:latest
-    container_name: mongodb
-    networks:
-      - game-network
-    ports:
-      - "27017:27017"
-    command: mongod --wiredTigerCacheSizeGB 0.15
-    deploy:
-      resources:
-        limits:
-          memory: 350m
-
-  # ==========================================
-  # СЕРДЦЕ СИСТЕМЫ: Eureka Registry
-  # ==========================================
+  # 1. СЕРВЕР РЕГИСТРАЦИИ (ПОРТ: 1111)
   eureka-server:
     image: tarassov12346/eureka-microservice:latest
     container_name: eureka-server
-    networks:
-      - game-network
-    ports:
-      - "1111:1111"
-    deploy:
-      resources:
-        limits:
-          memory: 256m
-    command: java -Xmx192m -XX:+UseZGC -jar app.jar
+    network_mode: host
+    restart: always
 
-  # ==========================================
-  # МАРШРУТИЗАТОР: API Gateway
-  # ==========================================
+  # 2. СЕТЕВОЙ ШЛЮЗ (ПОРТ: 5555)
   gateway-service:
     image: tarassov12346/gateway-service:latest
     container_name: gateway-service
-    networks:
-      - game-network
-    ports:
-      - "5555:5555"
+    network_mode: host
     environment:
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:1111/eureka/
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://localhost:1111/eureka/
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - JAVA_TOOL_OPTIONS=-Xmx256m
+      - EUREKA_CLIENT_FETCH_REGISTRY=true
+      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=true
+      - EUREKA_CLIENT_INITIALIZE_ON_DEMAND=false
     depends_on:
       - eureka-server
-    deploy:
-      resources:
-        limits:
-          memory: 256m
-    command: java -Xmx192m -XX:+UseZGC -jar app.jar
 
-  # ==========================================
-  # БИЗНЕС-ЛОГИКА: Микросервисы
-  # ==========================================
+  # 3. СЕРВИС ПОЛЬЗОВАТЕЛЕЙ (ПОРТ: 4444)
   users-service:
     image: tarassov12346/users-service:latest
     container_name: users-service
-    networks:
-      - game-network
-    ports:
-      - "4444:4444"
-      - "6567:6567"
+    network_mode: host
     environment:
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:1111/eureka/
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/game
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://localhost:1111/eureka/
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - JAVA_TOOL_OPTIONS="-Xmx256m"
     depends_on:
-      - postgres-db
       - eureka-server
-    deploy:
-      resources:
-        limits:
-          memory: 400m
-    command: java -Xmx256m -Xss256k -XX:MaxMetaspaceSize=96m -XX:+UseZGC -Djdk.tracePinnedThreads=short -jar app.jar --spring.config.name=users-server
 
+  # 4. СЕРВИС КАРТИНОК MONGO (ПОРТ: 3333)
   mongo-service:
     image: tarassov12346/mongo-service:latest
     container_name: mongo-service
-    networks:
-      - game-network
-    ports:
-      - "3333:3333"
-      - "6565:6565"
+    network_mode: host
+    environment:
+      # Исправлено: направляем строго на localhost хост-сети
+      - SPRING_DATA_MONGODB_URI=mongodb://localhost:27017/game
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://localhost:1111/eureka/
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - JAVA_TOOL_OPTIONS="-Xmx256m"
     depends_on:
-      - mongodb
       - eureka-server
-    deploy:
-      resources:
-        limits:
-          memory: 350m
-    command: java -Xmx256m -XX:+UseZGC -Djdk.tracePinnedThreads=short -jar app.jar --spring.config.name=mongo-server-docker
 
+  # 5. ИГРОВОЙ ДВИЖОК (ПОРТ: 2223)
   game-service:
     image: tarassov12346/game-service:latest
     container_name: game-service
-    networks:
-      - game-network
-    ports:
-      - "6566:6566"
-      - "2223:2222"
-    depends_on:
-      - eureka-server
-    deploy:
-      resources:
-        limits:
-          memory: 350m
-    command: java -Xmx256m -XX:+UseZGC -jar app.jar
-
-  # ==========================================
-  # ИГРОВОЙ ДВИЖОК: Тетрис
-  # ==========================================
-  raging-horse-tetris:
-    image: tarassov12346/raging-horse-tetris:latest
-    container_name: raging-horse-tetris
-    networks:
-      - game-network
-    ports:
-      - "5701:5701"
-      - "8080:8080"
+    network_mode: host
     environment:
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:1111/eureka/
-      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
-      BASE_URL: http://gateway-service:5555
+      # Исправлено: уходим с занятого гитхабом порта 2222 на свободный 2223
+      - SERVER_PORT=2223
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://localhost:1111/eureka/
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - JAVA_TOOL_OPTIONS="-Xmx256m"
     depends_on:
       - eureka-server
-    deploy:
-      resources:
-        limits:
-          memory: 350m
-    command: java -XX:+UseContainerSupport -XX:+UseZGC -jar app.jar
+
+  # 6. ФРОНТЕНД И ВЕБСОКЕТЫ ТЕТРИСА
+  tetris-game:
+    # Исправлено: точное имя репозитория из вашего Docker Hub
+    image: tarassov12346/raging-horse-tetris:latest
+    container_name: tetris-game
+    network_mode: host
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://localhost:1111/eureka/
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - JAVA_TOOL_OPTIONS="-Xmx256m"
+    depends_on:
+      - eureka-server
+
+  # === БАЗЫ ДАННЫХ ===
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: postgres-db
+    network_mode: host
+    environment:
+      # Настройки строго под ваш users-service
+      - POSTGRES_DB=game
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=mine
+    restart: always
+
+  mongodb:
+    image: mongo:6.0
+    container_name: mongodb
+    network_mode: host
+    restart: always
