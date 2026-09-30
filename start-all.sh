@@ -9,7 +9,7 @@ wait_for_port() {
     local host=$1
     local port=$2
     local service_name=$3
-    local timeout=60
+    local timeout=180
     local count=0
 
     echo -n "⏳ Ожидаем готовности порта $port для [$service_name]..."
@@ -28,7 +28,7 @@ wait_for_port() {
 # 2. Профессиональная функция проверки статуса приложения ВНУТРИ ЕВРИКИ
 wait_for_eureka_status() {
     local app_name=$1
-    local timeout=60
+    local timeout=180
     local count=0
 
     echo -n "🌐 [Eureka Client]: Ждем, пока микросервис [$app_name] получит статус UP..."
