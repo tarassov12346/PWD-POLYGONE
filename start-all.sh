@@ -55,10 +55,12 @@ echo -e "\n📋 [ЭТАП 3]: Запуск игровых ядер и движк
 # Поднимаем бизнес-логику. Docker сам пересоздаст их, если вышли новые образы
 docker compose up -d users-service game-service mongo-service tetris-game
 
-# Ожидаем порты критически важных сервисов, без которых Шлюз упадет
-wait_for_port "127.0.0.1" 2222 "Users & Game Services"
+# Ожидаем порты каждого независимого сервиса строго на своих адресах
+wait_for_port "127.0.0.1" 4444 "Users-service"
+wait_for_port "127.0.0.1" 2222 "Game-service"
 wait_for_port "127.0.0.1" 3333 "Mongo-service" || true
 wait_for_port "127.0.0.1" 8080 "Tetris Game Core"
+
 
 # --- ШАГ 4: Сетевой Шлюз (Бордюр безопасности) ---
 echo -e "\n📋 [ЭТАП 4]: Открываем сетевые шлюзы для пользователей..."
