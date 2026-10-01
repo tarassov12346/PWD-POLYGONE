@@ -10,6 +10,7 @@ services:
     container_name: gateway-service
     network_mode: host
     environment:
+    - SERVER_PORT=5555  # <-- ДОБАВЬТЕ ЭТУ СТРОКУ СЮДА
     - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://localhost:1111/eureka/
     - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     - JAVA_TOOL_OPTIONS=-Xmx256m
@@ -18,6 +19,7 @@ services:
     - EUREKA_CLIENT_INITIALIZE_ON_DEMAND=false
     depends_on:
     - eureka-server
+  
   users-service:
     image: tarassov12346/users-service:latest
     container_name: users-service
